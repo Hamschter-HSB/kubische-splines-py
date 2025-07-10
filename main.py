@@ -38,8 +38,8 @@ def get_faces_cube(_):
 pyramid_size = 0.5
 cube_size = pyramid_size  # Würfelseitenlänge = Basis der Pyramide
 
-pyramid_verts = unit_pyramid(pyramid_size)
-pyramid_faces = get_faces_pyramid(pyramid_verts)
+pyramid_verts = unit_pyramid(pyramid_size) #aufruf der funktionen oben
+pyramid_faces = get_faces_pyramid(pyramid_verts) # ""
 
 # Würfel-Verts definieren (Seitenlänge = cube_size)
 d = cube_size / 2
@@ -55,7 +55,7 @@ cube_verts = np.array([
 ])
 cube_faces = get_faces_cube(cube_verts)
 
-# Kurvenpunkte (Beispielpunkte, du kannst deine eigenen nutzen)
+# Kurvenpunkte
 customPoints = np.array([
     [np.random.randint(1, 6), np.random.randint(1, 6), np.random.randint(1, 6)],
     [np.random.randint(1, 6), np.random.randint(1, 6), np.random.randint(1, 6)],
@@ -63,13 +63,14 @@ customPoints = np.array([
     [np.random.randint(1, 6), np.random.randint(1, 6), np.random.randint(1, 6)]
 ])
 
-p1 = np.array([1, 1, 1])
+
+p1 = np.array([7, 7, 7])
 p2 = np.array([3, 3, 1])
 
 points = np.vstack([
-    p1, p2,
+    p1, p2,          # Startpunkt = p1
     customPoints,
-    p1
+    p1               # Endpunkt = Startpunkt = p1
 ])
 x, y, z = points.T
 
@@ -121,7 +122,7 @@ g = 9.81
 z_max = np.max(z_fine)
 
 v_eff = np.sqrt(2 * g * (z_max - z_fine))
-v_eff = np.clip(v_eff, 0.3, None)
+v_eff = np.clip(v_eff, 0.3, None)     #verhindert v = 0 bei hochpunkt
 v_eff = v_eff / np.max(v_eff)
 
 ds = np.sqrt(np.diff(x_fine)**2 + np.diff(y_fine)**2 + np.diff(z_fine)**2)
@@ -162,7 +163,7 @@ cube_spacing = 1.0       # Abstand Würfel-Würfel (in Einheiten)
 # Animation Setup
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
-ax.plot(x_fine, y_fine, z_fine, 'b-', label='Spline-Kurve')
+#ax.plot(x_fine, y_fine, z_fine, 'b-', label='Spline-Kurve')
 ax.plot(x, y, z, 'ro', label='Stützpunkte')
 
 pyramid_poly = Poly3DCollection([], facecolors='orange', edgecolors='k', alpha=0.9)
@@ -177,7 +178,7 @@ for _ in range(num_cubes):
 ax.set_xlim(np.min(x_fine)-1, np.max(x_fine)+1)
 ax.set_ylim(np.min(y_fine)-1, np.max(y_fine)+1)
 ax.set_zlim(np.min(z_fine)-1, np.max(z_fine)+1)
-ax.set_title("Pyramide mit angehängten Würfeln (gleicher Abstand & Größe)")
+ax.set_title("3D Achterbahn")
 ax.legend()
 
 def update(frame):
@@ -185,7 +186,10 @@ def update(frame):
     s_now = float(u_to_s(u_now))
 
     # Pyramide transformieren
-    pos = np.array([x_anim[frame], y_anim[frame], z_anim[frame]])
+    up_vec = Ups_interp[frame]
+    offset_height = pyramid_size / 2  # halb so hoch wie die Basisfläche
+    pos = np.array([x_anim[frame], y_anim[frame], z_anim[frame]]) + up_vec * offset_height
+
     T_vec = T_anim[frame]
     N_vec = N_anim[frame]
     B_vec = B_anim[frame]
@@ -199,7 +203,7 @@ def update(frame):
         dist = s_now - first_cube_offset - i * cube_spacing
         dist = dist % s_total
         u_c = float(s_to_u(dist))
-        pos_c = np.array(splev(u_c, tck))
+        pos_c = np.array(splev(u_c, tck)) + Ups_interp[frame] * (cube_size / 2)
         T_c = np.array(splev(u_c, tck, der=1))
         T_c /= np.linalg.norm(T_c)
         Ups_c = np.stack([interp1d(u_vals, Ups[:, d], kind='linear')(u_c) for d in range(3)])
@@ -212,5 +216,40 @@ def update(frame):
 
     return [pyramid_poly] + cube_polys
 
+# Stützlinien von jedem Punkt bis z=0 zeichnen
+for px, py, pz in points:
+    ax.plot([px, px], [py, py], [0, pz], color='red', linestyle='-', linewidth=1)
+
 ani = FuncAnimation(fig, update, frames=n_frames, interval=20, blit=False)
+
+# Schienen seitlich der Kurve (versetzt entlang des Normalen-Vektors)
+rail_offset = 0.3  # Abstand der Schienen zur Kurve
+
+# Eine der beiden orthogonalen Richtungen (z. B. N_vec)
+rail_left = np.array([x_fine, y_fine, z_fine]) + (B.T * rail_offset)
+rail_right = np.array([x_fine, y_fine, z_fine]) - (B.T * rail_offset)
+
+# Querstreben erzeugen
+num_streben = 50  # Anzahl der Streben (je höher, desto dichter)
+streben_indices = np.linspace(0, len(x_fine)-1, num_streben, dtype=int)
+
+for idx in streben_indices:
+    # Start- und Endpunkt der Strebe (linke zu rechter Schiene)
+    p_left = rail_left[:, idx]
+    p_right = rail_right[:, idx]
+
+    ax.plot(
+        [p_left[0], p_right[0]],
+        [p_left[1], p_right[1]],
+        [p_left[2], p_right[2]],
+        color='dimgray',
+        linewidth=2
+    )
+
+
+
+# Plotten der Schienen
+ax.plot(rail_left[0], rail_left[1], rail_left[2], color='black', linewidth=2)
+ax.plot(rail_right[0], rail_right[1], rail_right[2], color='black', linewidth=2)
+
 plt.show()
